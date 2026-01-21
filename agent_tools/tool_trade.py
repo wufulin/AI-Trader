@@ -4,8 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from fastmcp import FastMCP
 
-from typing import Dict, List, Optional, Any
-import fcntl
+import portalocker
 from pathlib import Path
 # Add project root directory to Python path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -21,7 +20,11 @@ from tools.price_tools import (get_latest_position, get_open_prices,
 mcp = FastMCP("TradeTools")
 
 def _position_lock(signature: str):
-    """Context manager for file-based lock to serialize position updates per signature."""
+    """
+    Context manager for cross-platform file-based lock to serialize position updates per signature.
+
+    Uses portalocker for Windows/Unix compatibility instead of fcntl (Unix-only).
+    """
     class _Lock:
         def __init__(self, name: str):
             # Prefer LOG_PATH so the lock file lives alongside the positions file
@@ -41,14 +44,18 @@ def _position_lock(signature: str):
             self.lock_path = base_dir / ".position.lock"
             # Ensure lock file exists
             self._fh = open(self.lock_path, "a+")
+
         def __enter__(self):
-            fcntl.flock(self._fh.fileno(), fcntl.LOCK_EX)
+            # Use portalocker for cross-platform file locking
+            portalocker.lock(self._fh, portalocker.LOCK_EX)
             return self
+
         def __exit__(self, exc_type, exc, tb):
             try:
-                fcntl.flock(self._fh.fileno(), fcntl.LOCK_UN)
+                portalocker.unlock(self._fh)
             finally:
                 self._fh.close()
+
     return _Lock(signature)
 
 
@@ -203,22 +210,31 @@ def buy(symbol: str, amount: int) -> Dict[str, Any]:
         if log_path.startswith("./data/"):
             log_path = log_path[7:]  # Remove "./data/" prefix
         position_file_path = os.path.join(project_root, "data", log_path, signature, "position", "position.jsonl")
-        with open(position_file_path, "a") as f:
-            # Write JSON format transaction record, containing date, operation ID, transaction details and updated position
-            print(
-                f"Writing to position.jsonl: {json.dumps({'date': today_date, 'id': current_action_id + 1, 'this_action':{'action':'buy','symbol':symbol,'amount':amount},'positions': new_position})}"
-            )
-            f.write(
-                json.dumps(
-                    {
-                        "date": today_date,
-                        "id": current_action_id + 1,
-                        "this_action": {"action": "buy", "symbol": symbol, "amount": amount},
-                        "positions": new_position,
-                    }
+        try:
+            with open(position_file_path, "a") as f:
+                # Write JSON format transaction record, containing date, operation ID, transaction details and updated position
+                print(
+                    f"Writing to position.jsonl: {json.dumps({'date': today_date, 'id': current_action_id + 1, 'this_action':{'action':'buy','symbol':symbol,'amount':amount},'positions': new_position})}"
                 )
-                + "\n"
-            )
+                f.write(
+                    json.dumps(
+                        {
+                            "date": today_date,
+                            "id": current_action_id + 1,
+                            "this_action": {"action": "buy", "symbol": symbol, "amount": amount},
+                            "positions": new_position,
+                        }
+                    )
+                    + "\n"
+                )
+        except (IOError, OSError) as e:
+            return {
+                "error": f"Failed to write transaction to file: {e}",
+                "symbol": symbol,
+                "date": today_date,
+                "positions": new_position,
+                "note": "Position updated in memory but not persisted to disk"
+            }
         # Step 7: Return updated position
         write_config_value("IF_TRADE", True)
         print("IF_TRADE", get_config_value("IF_TRADE"))
@@ -410,22 +426,31 @@ def sell(symbol: str, amount: int) -> Dict[str, Any]:
     if log_path.startswith("./data/"):
         log_path = log_path[7:]  # Remove "./data/" prefix
     position_file_path = os.path.join(project_root, "data", log_path, signature, "position", "position.jsonl")
-    with open(position_file_path, "a") as f:
-        # Write JSON format transaction record, containing date, operation ID and updated position
-        print(
-            f"Writing to position.jsonl: {json.dumps({'date': today_date, 'id': current_action_id + 1, 'this_action':{'action':'sell','symbol':symbol,'amount':amount},'positions': new_position})}"
-        )
-        f.write(
-            json.dumps(
-                {
-                    "date": today_date,
-                    "id": current_action_id + 1,
-                    "this_action": {"action": "sell", "symbol": symbol, "amount": amount},
-                    "positions": new_position,
-                }
+    try:
+        with open(position_file_path, "a") as f:
+            # Write JSON format transaction record, containing date, operation ID and updated position
+            print(
+                f"Writing to position.jsonl: {json.dumps({'date': today_date, 'id': current_action_id + 1, 'this_action':{'action':'sell','symbol':symbol,'amount':amount},'positions': new_position})}"
             )
-            + "\n"
-        )
+            f.write(
+                json.dumps(
+                    {
+                        "date": today_date,
+                        "id": current_action_id + 1,
+                        "this_action": {"action": "sell", "symbol": symbol, "amount": amount},
+                        "positions": new_position,
+                    }
+                )
+                + "\n"
+            )
+    except (IOError, OSError) as e:
+        return {
+            "error": f"Failed to write transaction to file: {e}",
+            "symbol": symbol,
+            "date": today_date,
+            "positions": new_position,
+            "note": "Position updated in memory but not persisted to disk"
+        }
 
     # Step 7: Return updated position
     write_config_value("IF_TRADE", True)

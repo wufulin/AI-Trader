@@ -110,7 +110,7 @@ class WebScrapingJinaTool:
         return_content = []
         print(f"Found {len(all_urls)} URLs")
         if len(all_urls) > 1:
-            # Randomly select three to form new all_urls
+            # Randomly select one to form new all_urls
             all_urls = random.sample(all_urls, 1)
         for url in all_urls:
             print(f"Scraping {url}")

@@ -364,6 +364,12 @@ CRYPTO_HTTP_PORT=8005
 
 # 🧠 AI Agent Configuration
 AGENT_MAX_STEP=30             # Maximum reasoning steps
+
+# 🔐 MCP API Security (NEW)
+# IMPORTANT: Set this to protect MCP trading endpoints from unauthorized access
+# Leave empty to disable authentication (development mode only)
+# Generate a secure key: python -c "import secrets; print(secrets.token_urlsafe(32))"
+MCP_API_KEY=""
 ```
 
 ### 📦 Dependencies

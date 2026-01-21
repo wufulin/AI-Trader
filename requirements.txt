@@ -2,7 +2,10 @@ langchain==1.0.2
 langchain-openai==1.0.1
 langchain-mcp-adapters>=0.1.0
 fastmcp==2.12.5
+portalocker>=2.8.0
+python-dotenv>=1.0.0
+requests>=2.31.0
 
 # A_stock
-tushare
-efinance
+tushare>=1.2.60
+efinance>=0.5.6
